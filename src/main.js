@@ -122,6 +122,11 @@ app.innerHTML = `
       <button class="primary" id="addOpt">+ Option</button>
       <button id="addCrit">+ Kriterium</button>
       <button id="saveHist">★ Im Verlauf speichern</button>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button id="shareBtn">🔗 Teilen</button>
+      <button id="csvBtn">CSV</button>
+      <button id="pdfBtn">PDF</button>
+      <span class="tb-sep" aria-hidden="true"></span>
       <button class="ghost" id="loadExample">Beispiel laden</button>
       <button class="ghost" id="clearAll">Leeren</button>
     </div>
@@ -152,6 +157,13 @@ app.innerHTML = `
         <h2>Verlauf</h2>
         <span class="hint" id="histHint">Deine gespeicherten Entscheidungen</span>
       </div>
+      <div class="hist-controls">
+        <input type="search" id="histSearch" autocomplete="off" placeholder="Verlauf durchsuchen …" />
+        <select id="histFilter" aria-label="Nach Kategorie filtern">
+          <option value="">Alle Kategorien</option>
+        </select>
+        <button class="ghost" id="histCsv">Verlauf als CSV</button>
+      </div>
       <div class="history" id="historyList"></div>
     </div>
 
@@ -168,6 +180,16 @@ const genBtn = document.getElementById("genBtn");
 const micBtn = document.getElementById("micBtn");
 const askStatus = document.getElementById("askStatus");
 const historyList = document.getElementById("historyList");
+const histSearch = document.getElementById("histSearch");
+const histFilter = document.getElementById("histFilter");
+
+// Kategorie-Filter mit den bekannten Kategorien befüllen.
+CATEGORIES.forEach((c) => {
+  const opt = document.createElement("option");
+  opt.value = c;
+  opt.textContent = c;
+  histFilter.appendChild(opt);
+});
 
 /* ---------------------------- Theme ------------------------------- */
 
@@ -495,6 +517,8 @@ titleField.addEventListener("keydown", (e) => {
 
 let history = loadHistory();
 let suggestedCategory = null; // Kategorie aus letzter Generierung (KI oder Heuristik)
+let histQuery = ""; // Suchtext im Verlauf
+let histCatFilter = ""; // aktive Kategorie-Filterung ("" = alle)
 
 function loadHistory() {
   try {
@@ -640,6 +664,15 @@ function buildHistItem(h) {
   return item;
 }
 
+function historyMatches(h) {
+  if (histCatFilter && (h.category || "Sonstiges") !== histCatFilter) return false;
+  if (histQuery) {
+    const hay = `${h.title} ${h.winner} ${h.category}`.toLowerCase();
+    if (!hay.includes(histQuery)) return false;
+  }
+  return true;
+}
+
 function renderHistory() {
   historyList.innerHTML = "";
   if (history.length === 0) {
@@ -651,10 +684,19 @@ function renderHistory() {
     return;
   }
 
+  const filtered = history.filter(historyMatches);
+  if (filtered.length === 0) {
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = "Keine Einträge passen zu Suche/Filter.";
+    historyList.appendChild(e);
+    return;
+  }
+
   // Nach Kategorie gruppieren; Gruppen-Reihenfolge = zuletzt genutzte zuerst
   // (history ist bereits neueste-zuerst sortiert).
   const groups = new Map();
-  history.forEach((h) => {
+  filtered.forEach((h) => {
     const cat = CATEGORIES.includes(h.category) ? h.category : "Sonstiges";
     if (!groups.has(cat)) groups.set(cat, []);
     groups.get(cat).push(h);
@@ -680,6 +722,170 @@ function escapeHtml(s) {
 }
 
 document.getElementById("saveHist").addEventListener("click", saveCurrentToHistory);
+
+histSearch.addEventListener("input", () => {
+  histQuery = histSearch.value.trim().toLowerCase();
+  renderHistory();
+});
+histFilter.addEventListener("change", () => {
+  histCatFilter = histFilter.value;
+  renderHistory();
+});
+
+/* ---------------- Export (CSV / PDF) ----------------------------- */
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+function csvRow(cells) {
+  return cells.map(csvCell).join(";");
+}
+
+function downloadFile(filename, content, mime) {
+  const blob = new Blob(["﻿" + content], { type: mime + ";charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function slugify(s) {
+  return (
+    (s || "entscheidung")
+      .toLowerCase()
+      .replace(/[äöü]/g, (m) => ({ ä: "ae", ö: "oe", ü: "ue" }[m]))
+      .replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 50) || "entscheidung"
+  );
+}
+
+// Aktuelle Matrix als CSV: Kriterien × Optionen + Rangliste.
+function currentDecisionCsv() {
+  const rows = [];
+  rows.push(csvRow(["Entscheidung", state.title || "Meine Entscheidung"]));
+  rows.push("");
+  rows.push(csvRow(["Kriterium", "Gewicht", ...state.options]));
+  state.criteria.forEach((c) => {
+    rows.push(csvRow([c.name, c.weight, ...state.options.map((_, oi) => c.scores[oi] ?? "")]));
+  });
+  rows.push("");
+  rows.push(csvRow(["Ergebnis (0–100)", ""]));
+  currentRanking().forEach((r, i) => {
+    rows.push(csvRow([`${i + 1}. ${r.name}`, r.score.toFixed(1)]));
+  });
+  return rows.join("\n");
+}
+
+function historyCsv() {
+  const rows = [csvRow(["Datum", "Kategorie", "Titel", "Gewinner", "Score", "Optionen"])];
+  history.forEach((h) => {
+    rows.push(
+      csvRow([
+        formatDate(h.date),
+        h.category || "Sonstiges",
+        h.title,
+        h.winner,
+        h.winnerScore.toFixed(1),
+        h.optionCount,
+      ])
+    );
+  });
+  return rows.join("\n");
+}
+
+document.getElementById("csvBtn").addEventListener("click", () => {
+  if (state.options.length === 0 || state.criteria.length === 0) {
+    setStatus("Nichts zu exportieren – erst Optionen und Kriterien anlegen.", "warn");
+    return;
+  }
+  downloadFile(`${slugify(state.title)}.csv`, currentDecisionCsv(), "text/csv");
+});
+
+document.getElementById("histCsv").addEventListener("click", () => {
+  if (history.length === 0) {
+    setStatus("Der Verlauf ist noch leer.", "warn");
+    return;
+  }
+  downloadFile("entscheidungs-verlauf.csv", historyCsv(), "text/csv");
+});
+
+// PDF über den Druckdialog (Browser: „Als PDF speichern“). Print-CSS blendet
+// alles ausser Titel, Matrix und Ergebnis aus.
+document.getElementById("pdfBtn").addEventListener("click", () => {
+  if (state.options.length === 0 || state.criteria.length === 0) {
+    setStatus("Nichts zu exportieren – erst Optionen und Kriterien anlegen.", "warn");
+    return;
+  }
+  window.print();
+});
+
+/* ---------------- Teilen per Link -------------------------------- */
+
+function encodeState(s) {
+  const json = JSON.stringify({ title: s.title, options: s.options, criteria: s.criteria });
+  return btoa(unescape(encodeURIComponent(json)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+function decodeState(str) {
+  const b64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const json = decodeURIComponent(escape(atob(b64)));
+  const data = JSON.parse(json);
+  if (!Array.isArray(data.options) || !Array.isArray(data.criteria)) throw new Error("bad");
+  return data;
+}
+
+function shareLink() {
+  if (state.options.length === 0 || state.criteria.length === 0) {
+    setStatus("Nichts zu teilen – erst eine Entscheidung anlegen.", "warn");
+    return;
+  }
+  const url = `${location.origin}${location.pathname}#d=${encodeState(state)}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard
+      .writeText(url)
+      .then(() => setStatus("Link kopiert – zum Teilen einfügen.", "ok"))
+      .catch(() => window.prompt("Zum Teilen kopieren:", url));
+  } else {
+    window.prompt("Zum Teilen kopieren:", url);
+  }
+}
+
+document.getElementById("shareBtn").addEventListener("click", shareLink);
+
+// Beim Laden: geteilte Entscheidung aus dem URL-Hash übernehmen (falls vorhanden).
+function loadSharedFromHash() {
+  const m = location.hash.match(/[#&]d=([^&]+)/);
+  if (!m) return false;
+  try {
+    const data = decodeState(m[1]);
+    state = {
+      title: String(data.title || "Geteilte Entscheidung"),
+      options: data.options.map((o) => String(o)),
+      criteria: data.criteria.map((c) => ({
+        name: String(c.name || ""),
+        weight: clampNum(c.weight, 0, 10),
+        scores: (Array.isArray(c.scores) ? c.scores : []).map((s) => clampNum(s, 0, 10)),
+      })),
+    };
+    saveState();
+    // Hash entfernen, damit spätere Änderungen normal lokal gespeichert werden.
+    // (window.history, nicht die gleichnamige Verlaufs-Variable.)
+    window.history.replaceState(null, "", location.pathname + location.search);
+    setStatus("Geteilte Entscheidung geladen.", "ok");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /* ---------------- Sprache → Vorschläge --------------------------- */
 
@@ -878,6 +1084,7 @@ if (SpeechRecognition) {
 
 /* ---------------- Erst-Render + Intro-Animation ------------------- */
 
+loadSharedFromHash(); // geteilte Entscheidung ggf. übernehmen (vor dem Render)
 render();
 renderHistory();
 

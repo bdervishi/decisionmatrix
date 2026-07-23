@@ -17,7 +17,11 @@ Rangliste und Animationen.
 - **Gewichteter Gesamtscore**, normiert auf 100, live berechnet
 - **Rangliste** mit animierten Balken und hochzählenden Werten (GSAP)
 - **Empfehlung** — die beste Option wird hervorgehoben
-- **Verlauf** — Entscheidungen speichern und später wieder öffnen oder löschen
+- **Verlauf** — Entscheidungen speichern, später wieder öffnen oder löschen
+  - **nach Kategorien gruppiert** (Technik, Reise, Kleidung … ), Kategorie pro Eintrag änderbar
+  - **Suche & Kategorie-Filter** im Verlauf
+- **Export** — aktuelle Entscheidung als **CSV** oder **PDF** (Druckdialog), Verlauf als CSV
+- **Teilen per Link** — der Zustand steckt im URL-Hash (`#d=…`), rein clientseitig, kein Server
 - **Light/Dark-Theme** mit Umschalter, folgt sonst dem System
 - **Persistenz** — Stand und Verlauf werden lokal im Browser (localStorage) gespeichert
 

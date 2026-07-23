@@ -138,7 +138,8 @@ h1 {
 }
 
 /* ---------- toolbar ---------- */
-.toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 26px 0 30px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin: 26px 0 30px; align-items: center; }
+.tb-sep { width: 1px; align-self: stretch; background: var(--hair-strong); margin: 2px 2px; }
 button {
   font: inherit; font-size: 14px; font-weight: 550; cursor: pointer;
   border-radius: 10px; padding: 10px 16px; border: 1px solid var(--hair-strong);
@@ -232,6 +233,24 @@ input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .empty { padding: 30px 22px; font-size: 14px; }
 
 /* ---------- history ---------- */
+.hist-controls {
+  display: flex; gap: 10px; align-items: center;
+  padding: 14px 22px; border-bottom: 1px solid var(--hair); flex-wrap: wrap;
+}
+.hist-controls input[type="search"] {
+  flex: 1; min-width: 160px; font: inherit; font-size: 14px; color: var(--ink);
+  background: var(--field); border: 1px solid var(--hair-strong);
+  border-radius: 9px; padding: 9px 12px;
+}
+.hist-controls input:focus-visible,
+.hist-controls select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hist-controls select {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--field);
+  border: 1px solid var(--hair-strong); border-radius: 9px; padding: 9px 10px; cursor: pointer;
+}
+.hist-controls select:hover { border-color: var(--accent); }
+.hist-controls .ghost { border: 1px solid var(--hair-strong); }
+
 .history { display: flex; flex-direction: column; }
 .hist-group {
   display: flex; align-items: center; gap: 8px;
@@ -289,4 +308,23 @@ footer { margin-top: 42px; color: var(--muted); font-size: 12.5px; text-align: c
 @media (max-width: 560px) {
   .res-row { grid-template-columns: 1fr auto; }
   .res-row .bar-track { grid-column: 1 / -1; order: 3; }
+}
+
+/* ---------- Druck / PDF-Export ---------- */
+@media print {
+  :root { --paper: #fff; --card: #fff; --ink: #111; --shadow: none; }
+  body { background: #fff; }
+  .wrap { max-width: 100%; padding: 0; }
+  /* Nur Titel, Matrix und Ergebnis drucken */
+  .topbar, #askCard, .toolbar, #historyCard, footer, .lead, .del,
+  .card-head .hint { display: none !important; }
+  .card { border: 1px solid #ddd; box-shadow: none; break-inside: avoid; }
+  .card + .card { margin-top: 16px; }
+  h1 { font-size: 26px; margin-bottom: 6px; }
+  .eyebrow { color: #555; }
+  input[type="number"], input[type="text"], .score, .weight {
+    border: none !important; background: transparent !important; -webkit-appearance: none; appearance: none;
+  }
+  .bar-fill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .res-row.win .res-name::after { color: #1f9d6b; }
 }
