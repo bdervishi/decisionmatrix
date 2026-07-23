@@ -1,0 +1,57 @@
+:root {
+  --pp-bg: #faf9f7;
+  --pp-card: #fff;
+  --pp-ink: #201f27;
+  --pp-muted: #6c6a78;
+  --pp-hair: #e4e0d7;
+  --pp-accent: #5b52c9;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pp-bg: #16151b;
+    --pp-card: #1e1d25;
+    --pp-ink: #ecebf2;
+    --pp-muted: #9a98a8;
+    --pp-hair: #2c2b35;
+    --pp-accent: #948cf5;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 300px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--pp-bg);
+  color: var(--pp-ink);
+}
+.pop { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.pop-head { display: flex; align-items: center; gap: 9px; }
+.pop-mark {
+  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+  background: var(--pp-accent); color: #fff; font-size: 15px;
+}
+.pop-title { font-weight: 650; font-size: 14px; }
+.pop-primary {
+  font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; color: #fff;
+  background: var(--pp-accent); border: none; border-radius: 10px; padding: 11px 14px;
+}
+.pop-primary:hover { filter: brightness(1.06); }
+.pop-recent-label {
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--pp-muted); font-weight: 650; margin-top: 2px;
+}
+.pop-recent { display: flex; flex-direction: column; gap: 6px; }
+.pop-item {
+  text-align: left; font: inherit; font-size: 13px; cursor: pointer; color: var(--pp-ink);
+  background: var(--pp-card); border: 1px solid var(--pp-hair); border-radius: 9px;
+  padding: 9px 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pop-item:hover { border-color: var(--pp-accent); }
+.pop-item small { color: var(--pp-muted); }
+.pop-empty { font-size: 12.5px; color: var(--pp-muted); padding: 2px; }
+.pop-link {
+  font: inherit; font-size: 12.5px; cursor: pointer; color: var(--pp-muted);
+  background: transparent; border: none; padding: 4px; text-align: left; align-self: flex-start;
+}
+.pop-link:hover { color: var(--pp-ink); text-decoration: underline; }

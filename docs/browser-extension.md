@@ -200,5 +200,20 @@ Safari ist der aufwendigste Kanal (nativer App-Wrapper + Apple-Konto).
   `main.js` ist nun reine UI-/Orchestrierungs-Schicht und importiert diese Module.
   Verhaltensparität der Web-App per End-to-End-Test bestätigt.
 
-- **Nächster Schritt:** Phase 2 — WXT-Grundgerüst + Chrome/Edge-MVP (Side Panel), das
-  dieselben `src/core`-Module nutzt.
+- **Phase 2 — Chrome/Edge-MVP: erledigt.** Unter `extension/` liegt eine lauffähige
+  MV3-Extension (schlankes Vite-Setup statt WXT für den MVP — WXT bleibt der Weg für
+  die Firefox/Safari-Erweiterung in Phase 4/5). Enthalten:
+  - **Side Panel** mit der vollständigen Matrix-UI (`../src/main.js` wiederverwendet)
+  - **Popup** (Schnellstart: Side Panel öffnen, letzte Entscheidungen, Einstellungen)
+  - **Options** (Backend-URL + Share-Basis-URL, im geteilten Extension-Storage)
+  - **Background-Worker** + **Kontextmenü** („markierten Text als Entscheidung“)
+  - Icons (16/32/48/128), statisches Manifest, CSP-konformer Build (keine Inline-Skripte)
+  - Backend um **CORS** ergänzt, sodass die Extension die gehostete Funktion ohne breite
+    Host-Berechtigungen aufrufen kann
+  - Storage-Adapter aus Phase 1 wiederverwendet (localStorage, geteilt über die
+    Extension-Seiten). Als entpackte Erweiterung getestet: alle Seiten rendern fehlerfrei.
+  - Bauen & Laden: `npm run build:ext` → `extension/dist` als „Entpackte Erweiterung laden“
+    (siehe `extension/README.md`).
+
+- **Nächster Schritt:** Phase 3 (BYO-Key-Pfad direkt gegen Anthropic als Alternative zum
+  gehosteten Backend) und Phase 4 (Firefox via WXT, `gecko.id`, Sprach-Fallback).

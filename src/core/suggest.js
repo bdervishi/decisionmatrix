@@ -9,6 +9,7 @@ import { CATEGORIES, categorize } from "./categorize.js";
  * Endpoint setzen kann.
  */
 export async function requestSuggestion(transcript, backendUrl = config.backendUrl) {
+  if (!backendUrl) return null; // kein Backend konfiguriert → direkt Fallback
   try {
     const resp = await fetch(backendUrl, {
       method: "POST",
