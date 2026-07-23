@@ -8,6 +8,41 @@ import "./style.css";
 
 const KEY = "decisionmatrix_state_v1";
 const THEME_KEY = "decisionmatrix_theme";
+const HISTORY_KEY = "decisionmatrix_history_v1";
+
+const CATEGORIES = [
+  "Kleidung",
+  "Reise",
+  "Technik",
+  "Finanzen",
+  "Karriere",
+  "Wohnen",
+  "Gesundheit",
+  "Essen",
+  "Freizeit",
+  "Sonstiges",
+];
+
+// Lokaler Keyword-Klassifikator (Fallback, wenn keine KI-Kategorie vorliegt).
+const CATEGORY_KEYWORDS = [
+  ["Kleidung", ["outfit", "kleid", "anzieh", "anzug", "hose", "schuh", "jacke", "hemd", "mode", "tragen", "pullover", "krawatte"]],
+  ["Reise", ["ferien", "urlaub", "reise", "flug", "hotel", "trip", "ausland", "wochenendtrip", "städtereise", "reisen", "fliegen"]],
+  ["Technik", ["laptop", "macbook", "thinkpad", "handy", "smartphone", "iphone", "pc", "computer", "kamera", "kopfhörer", "tablet", "software", "gerät", "monitor", "konsole"]],
+  ["Finanzen", ["sparen", "investier", "aktie", "kredit", "geld", "versicherung", "konto", "budget", "hypothek", "anlage", "etf", "kryptowährung", "bitcoin"]],
+  ["Karriere", ["job", "stelle", "arbeit", "bewerbung", "studium", "ausbildung", "kündig", "beruf", "karriere", "gehalt", "praktikum", "arbeitgeber"]],
+  ["Wohnen", ["wohnung", "umzug", "umziehen", "miete", "haus", "wohnort", "wg", "möbel", "renovier"]],
+  ["Gesundheit", ["arzt", "sport", "ernährung", "diät", "fitness", "gesundheit", "therapie", "training", "abnehmen", "workout"]],
+  ["Essen", ["restaurant", "kochen", "rezept", "mittagessen", "abendessen", "pizza", "essen gehen", "lokal", "menü"]],
+  ["Freizeit", ["film", "serie", "buch", "spiel", "konzert", "hobby", "ausgehen", "kino", "festival", "party"]],
+];
+
+function categorize(text) {
+  const t = (text || "").toLowerCase();
+  for (const [cat, words] of CATEGORY_KEYWORDS) {
+    if (words.some((w) => t.includes(w))) return cat;
+  }
+  return "Sonstiges";
+}
 
 const EXAMPLE = {
   title: "Welches Outfit ziehe ich an?",
@@ -63,14 +98,30 @@ app.innerHTML = `
     <header>
       <p class="eyebrow">Gewichtete Entscheidung</p>
       <h1 id="titleField" contenteditable="true" spellcheck="false"></h1>
-      <p class="lead">Lege deine Optionen und Kriterien fest, gib jedem Kriterium ein Gewicht und
-        bewerte jede Option von&nbsp;0–10. Die Matrix rechnet die gewichtete Gesamtpunktzahl
-        live aus und markiert die beste Wahl. Klicke auf die Überschrift, um sie umzubenennen.</p>
+      <p class="lead">Sprich oder tippe einen Satz zu deiner Entscheidung — die App schlägt
+        automatisch Optionen und gewichtete Kriterien vor. Danach bewertest du jede Option
+        von&nbsp;0–10, und die Matrix rechnet die beste Wahl live aus.</p>
     </header>
+
+    <section class="ask card" id="askCard">
+      <div class="ask-body">
+        <label class="ask-label" for="askInput">Deine Entscheidung in einem Satz</label>
+        <div class="ask-row">
+          <button class="mic" id="micBtn" type="button" aria-label="Spracheingabe starten" title="Sprechen">
+            <span class="mic-glyph">🎤</span>
+          </button>
+          <input type="text" id="askInput" autocomplete="off"
+            placeholder="z. B. „Soll ich Outfit A, B oder C anziehen?“" />
+          <button class="primary" id="genBtn" type="button">Vorschläge</button>
+        </div>
+        <div class="ask-status" id="askStatus" role="status" aria-live="polite"></div>
+      </div>
+    </section>
 
     <div class="toolbar">
       <button class="primary" id="addOpt">+ Option</button>
       <button id="addCrit">+ Kriterium</button>
+      <button id="saveHist">★ Im Verlauf speichern</button>
       <button class="ghost" id="loadExample">Beispiel laden</button>
       <button class="ghost" id="clearAll">Leeren</button>
     </div>
@@ -96,6 +147,14 @@ app.innerHTML = `
       <div class="results" id="results"></div>
     </div>
 
+    <div class="card" id="historyCard">
+      <div class="card-head">
+        <h2>Verlauf</h2>
+        <span class="hint" id="histHint">Deine gespeicherten Entscheidungen</span>
+      </div>
+      <div class="history" id="historyList"></div>
+    </div>
+
     <footer>Alles wird lokal in deinem Browser gespeichert · Namen &amp; Titel per Klick anpassbar</footer>
   </div>
 `;
@@ -104,6 +163,11 @@ const headRow = document.getElementById("headRow");
 const body = document.getElementById("body");
 const results = document.getElementById("results");
 const titleField = document.getElementById("titleField");
+const askInput = document.getElementById("askInput");
+const genBtn = document.getElementById("genBtn");
+const micBtn = document.getElementById("micBtn");
+const askStatus = document.getElementById("askStatus");
+const historyList = document.getElementById("historyList");
 
 /* ---------------------------- Theme ------------------------------- */
 
@@ -403,11 +467,13 @@ document.getElementById("addOpt").addEventListener("click", addOption);
 document.getElementById("addCrit").addEventListener("click", addCriterion);
 document.getElementById("loadExample").addEventListener("click", () => {
   state = clone(EXAMPLE);
+  suggestedCategory = null;
   saveState();
   render();
 });
 document.getElementById("clearAll").addEventListener("click", () => {
   state = { title: "Meine Entscheidung", options: [], criteria: [] };
+  suggestedCategory = null;
   saveState();
   render();
 });
@@ -425,9 +491,395 @@ titleField.addEventListener("keydown", (e) => {
   }
 });
 
+/* ---------------- Verlauf (History) ------------------------------ */
+
+let history = loadHistory();
+let suggestedCategory = null; // Kategorie aus letzter Generierung (KI oder Heuristik)
+
+function loadHistory() {
+  try {
+    const s = localStorage.getItem(HISTORY_KEY);
+    const arr = s ? JSON.parse(s) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+function persistHistory() {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    /* Speicher voll/gesperrt – Verlauf bleibt in-memory */
+  }
+}
+
+// Rangliste der aktuellen Matrix als [{name, score}] absteigend.
+function currentRanking() {
+  return state.options
+    .map((name, oi) => ({ name: name || `Option ${oi + 1}`, score: optionScore(oi) }))
+    .sort((a, b) => b.score - a.score);
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString("de-CH", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function saveCurrentToHistory() {
+  if (state.options.length === 0 || state.criteria.length === 0 || totalWeight() <= 0) {
+    setStatus("Erst Optionen, Kriterien und Gewichte setzen, dann speichern.", "warn");
+    return;
+  }
+  const ranking = currentRanking();
+  const winner = ranking[0];
+  const category =
+    suggestedCategory && CATEGORIES.includes(suggestedCategory)
+      ? suggestedCategory
+      : categorize(`${state.title} ${state.options.join(" ")}`);
+  const entry = {
+    id: "h_" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+    date: new Date().toISOString(),
+    title: state.title || "Meine Entscheidung",
+    category,
+    winner: winner ? winner.name : "",
+    winnerScore: winner ? winner.score : 0,
+    optionCount: state.options.length,
+    // Vollständiger Snapshot zum Wiederherstellen
+    snapshot: clone({ title: state.title, options: state.options, criteria: state.criteria }),
+  };
+  history.unshift(entry);
+  if (history.length > 50) history = history.slice(0, 50);
+  persistHistory();
+  renderHistory();
+  setStatus("Im Verlauf gespeichert.", "ok");
+  const first = historyList.querySelector(".hist-item");
+  if (first && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    gsap.from(first, { height: 0, opacity: 0, duration: 0.4, ease: "power2.out" });
+  }
+}
+
+function restoreFromHistory(id) {
+  const entry = history.find((h) => h.id === id);
+  if (!entry) return;
+  state = clone(entry.snapshot);
+  if (!state.title) state.title = "Meine Entscheidung";
+  saveState();
+  render();
+  setStatus(`„${entry.title}“ geöffnet.`, "ok");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function deleteFromHistory(id) {
+  history = history.filter((h) => h.id !== id);
+  persistHistory();
+  renderHistory();
+}
+
+function recategorize(id, category) {
+  const entry = history.find((h) => h.id === id);
+  if (!entry || !CATEGORIES.includes(category)) return;
+  entry.category = category;
+  persistHistory();
+  renderHistory();
+}
+
+function buildHistItem(h) {
+  const item = document.createElement("div");
+  item.className = "hist-item";
+
+  const main = document.createElement("div");
+  main.className = "hist-main";
+  const t = document.createElement("div");
+  t.className = "hist-title";
+  t.textContent = h.title;
+  const meta = document.createElement("div");
+  meta.className = "hist-meta";
+  meta.textContent = `${formatDate(h.date)} · ${h.optionCount} Optionen`;
+  main.append(t, meta);
+
+  const win = document.createElement("div");
+  win.className = "hist-win";
+  win.innerHTML = `<span class="hist-win-name">★ ${escapeHtml(h.winner)}</span><span class="hist-win-score">${h.winnerScore.toFixed(0)}<span>/100</span></span>`;
+
+  const actions = document.createElement("div");
+  actions.className = "hist-actions";
+
+  const cat = document.createElement("select");
+  cat.className = "hist-cat";
+  cat.title = "Kategorie ändern";
+  cat.setAttribute("aria-label", "Kategorie ändern");
+  CATEGORIES.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    if (c === h.category) opt.selected = true;
+    cat.appendChild(opt);
+  });
+  cat.addEventListener("change", () => recategorize(h.id, cat.value));
+
+  const open = document.createElement("button");
+  open.className = "hist-open";
+  open.textContent = "Öffnen";
+  open.addEventListener("click", () => restoreFromHistory(h.id));
+  const del = document.createElement("button");
+  del.className = "del";
+  del.innerHTML = "&times;";
+  del.title = "Aus Verlauf entfernen";
+  del.setAttribute("aria-label", "Aus Verlauf entfernen");
+  del.addEventListener("click", () => deleteFromHistory(h.id));
+  actions.append(cat, open, del);
+
+  item.append(main, win, actions);
+  return item;
+}
+
+function renderHistory() {
+  historyList.innerHTML = "";
+  if (history.length === 0) {
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent =
+      "Noch keine gespeicherten Entscheidungen. Mit „★ Im Verlauf speichern“ hältst du den aktuellen Stand fest.";
+    historyList.appendChild(e);
+    return;
+  }
+
+  // Nach Kategorie gruppieren; Gruppen-Reihenfolge = zuletzt genutzte zuerst
+  // (history ist bereits neueste-zuerst sortiert).
+  const groups = new Map();
+  history.forEach((h) => {
+    const cat = CATEGORIES.includes(h.category) ? h.category : "Sonstiges";
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat).push(h);
+  });
+
+  for (const [cat, entries] of groups) {
+    const header = document.createElement("div");
+    header.className = "hist-group";
+    header.innerHTML = `<span class="hist-group-name">${escapeHtml(cat)}</span><span class="hist-group-count">${entries.length}</span>`;
+    historyList.appendChild(header);
+    entries.forEach((h) => historyList.appendChild(buildHistItem(h)));
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]));
+}
+
+document.getElementById("saveHist").addEventListener("click", saveCurrentToHistory);
+
+/* ---------------- Sprache → Vorschläge --------------------------- */
+
+function setStatus(msg, kind = "") {
+  askStatus.textContent = msg || "";
+  askStatus.className = "ask-status" + (kind ? " " + kind : "");
+}
+
+// Aus einer generierten Struktur den App-Zustand bauen (Punkte neutral = 5).
+function applySuggestion(data) {
+  const options = (data.options || []).map((o) => String(o)).filter(Boolean);
+  const criteria = (data.criteria || [])
+    .map((c) => ({
+      name: String(c.name || "").trim(),
+      weight: clampNum(c.weight, 0, 10),
+      scores: options.map(() => 5),
+    }))
+    .filter((c) => c.name);
+
+  if (options.length === 0 || criteria.length === 0) {
+    setStatus("Konnte daraus keine Matrix ableiten – bitte konkreter formulieren.", "warn");
+    return false;
+  }
+  state = { title: String(data.title || "Meine Entscheidung"), options, criteria };
+  saveState();
+  render();
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    gsap.from("#matrixCard, #resultCard", {
+      y: 16,
+      opacity: 0,
+      duration: 0.5,
+      stagger: 0.08,
+      ease: "power3.out",
+    });
+  }
+  return true;
+}
+
+/**
+ * Lokaler Fallback ohne KI: erkennt Optionen im Satz ("A oder B", "A, B, C",
+ * "A vs. B", "A / B") und schlägt generische, breit anwendbare Kriterien vor.
+ */
+function localHeuristic(text) {
+  const raw = text.trim();
+  let core = raw
+    // Satz-Einleitung entfernen: "<Verb> ich …", "was ist besser", "welche …"
+    .replace(/^\s*(\p{L}+\s+ich|was\s+ist\s+besser|welche[srn]?)\b[:,]?/iu, "")
+    .replace(/[?.!]+\s*$/, "")
+    .trim();
+
+  let options = [];
+  const orMatch = core.split(/\s+(?:oder|vs\.?|versus)\s+|(?:\s*[,/]\s*)|\s+\/\s+/i);
+  if (orMatch.length >= 2) {
+    options = orMatch.map((s) => s.trim()).filter(Boolean);
+  }
+  // "zwischen X und Y"
+  const between = core.match(/zwischen\s+(.+?)\s+und\s+(.+)/i);
+  if (options.length < 2 && between) {
+    options = [between[1].trim(), between[2].trim()];
+  }
+  options = options
+    .map((o) =>
+      o
+        .replace(/^(nach|in|im|zu|zum|zur|auf|für|bei|mit)\s+/i, "") // Präposition vorne
+        .replace(/^(der|die|das|den|dem|ein(e|en|em|er|es)?)\s+/i, "") // Artikel vorne
+        .replace(/\s+(kaufen|nehmen|wählen|machen|buchen|mieten|holen|fahren|gehen)$/i, "") // Verb hinten
+        .trim()
+    )
+    .filter((o) => o.length > 0 && o.length < 60)
+    .slice(0, 5);
+  if (options.length < 2) options = ["Option A", "Option B", "Option C"];
+
+  const criteria = [
+    { name: "Nutzen", weight: 5 },
+    { name: "Kosten / Aufwand", weight: 4 },
+    { name: "Risiko", weight: 3 },
+    { name: "Zeit", weight: 3 },
+    { name: "Bauchgefühl", weight: 2 },
+  ];
+
+  return {
+    title: raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Meine Entscheidung",
+    options,
+    criteria,
+  };
+}
+
+async function generate(text) {
+  const transcript = (text || "").trim();
+  if (!transcript) {
+    setStatus("Sag oder schreib zuerst einen Satz.", "warn");
+    askInput.focus();
+    return;
+  }
+  genBtn.disabled = true;
+  micBtn.disabled = true;
+  setStatus("Erzeuge Vorschläge …", "busy");
+
+  let data = null;
+  try {
+    const resp = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript }),
+    });
+    if (resp.ok) {
+      data = await resp.json();
+    }
+  } catch {
+    /* Netzwerk/kein Backend → Fallback unten */
+  }
+
+  let usedAi = true;
+  if (!data || !Array.isArray(data.options) || data.options.length === 0) {
+    usedAi = false;
+    data = localHeuristic(transcript);
+  }
+
+  // Kategorie merken: KI-Wert bevorzugen, sonst lokal klassifizieren.
+  suggestedCategory =
+    data.category && CATEGORIES.includes(data.category)
+      ? data.category
+      : categorize(`${transcript} ${(data.options || []).join(" ")}`);
+
+  const ok = applySuggestion(data);
+  genBtn.disabled = false;
+  micBtn.disabled = false;
+  if (ok) {
+    setStatus(usedAi ? "Von Claude erzeugt – jetzt Punkte 0–10 vergeben." : "Ohne KI erzeugt – Vorschläge sind einfach gehalten.", usedAi ? "ok" : "warn");
+  }
+}
+
+genBtn.addEventListener("click", () => generate(askInput.value));
+askInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    generate(askInput.value);
+  }
+});
+
+/* ---- Spracheingabe (Web Speech API) ---- */
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SpeechRecognition) {
+  const recog = new SpeechRecognition();
+  recog.lang = "de-DE";
+  recog.interimResults = true;
+  recog.continuous = false;
+  let listening = false;
+
+  micBtn.addEventListener("click", () => {
+    if (listening) {
+      recog.stop();
+      return;
+    }
+    try {
+      recog.start();
+    } catch {
+      /* start() wirft, wenn bereits aktiv – ignorieren */
+    }
+  });
+
+  recog.addEventListener("start", () => {
+    listening = true;
+    micBtn.classList.add("listening");
+    setStatus("Ich höre zu … sprich jetzt.", "busy");
+  });
+  recog.addEventListener("result", (e) => {
+    let text = "";
+    for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
+    askInput.value = text.trim();
+  });
+  recog.addEventListener("error", (e) => {
+    listening = false;
+    micBtn.classList.remove("listening");
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      setStatus("Mikrofon-Zugriff wurde blockiert – bitte tippen.", "warn");
+    } else if (e.error !== "aborted") {
+      setStatus("Spracheingabe nicht möglich – bitte tippen.", "warn");
+    }
+  });
+  recog.addEventListener("end", () => {
+    listening = false;
+    micBtn.classList.remove("listening");
+    if (askInput.value.trim()) {
+      setStatus("Erkannt – tippe zum Korrigieren oder erzeuge Vorschläge.", "");
+      generate(askInput.value);
+    } else if (askStatus.classList.contains("busy")) {
+      setStatus("Nichts erkannt – bitte erneut versuchen oder tippen.", "warn");
+    }
+  });
+} else {
+  // Browser ohne Spracherkennung: Mikrofon-Button ausblenden, Texteingabe bleibt.
+  micBtn.style.display = "none";
+  askInput.placeholder = "Tippe deine Entscheidung, z. B. „Laptop A oder B?“";
+}
+
 /* ---------------- Erst-Render + Intro-Animation ------------------- */
 
 render();
+renderHistory();
 
 if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
   const intro = gsap.timeline({ defaults: { ease: "power3.out" } });
@@ -436,7 +888,9 @@ if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     .from(".eyebrow", { y: 12, opacity: 0, duration: 0.4 }, "-=0.2")
     .from("h1", { y: 18, opacity: 0, duration: 0.55 }, "-=0.25")
     .from(".lead", { y: 14, opacity: 0, duration: 0.45 }, "-=0.35")
+    .from("#askCard", { y: 16, opacity: 0, duration: 0.5 }, "-=0.2")
     .from(".toolbar button", { y: 12, opacity: 0, duration: 0.35, stagger: 0.05 }, "-=0.25")
     .from("#matrixCard", { y: 22, opacity: 0, duration: 0.5 }, "-=0.15")
-    .from("#resultCard", { y: 22, opacity: 0, duration: 0.5 }, "-=0.35");
+    .from("#resultCard", { y: 22, opacity: 0, duration: 0.5 }, "-=0.35")
+    .from("#historyCard", { y: 22, opacity: 0, duration: 0.5 }, "-=0.4");
 }
