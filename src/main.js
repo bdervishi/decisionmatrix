@@ -1,86 +1,32 @@
 import gsap from "gsap";
 import "./style.css";
 
+import { config, STORAGE_KEYS } from "./core/config.js";
+import { clone, clamp, escapeHtml, slugify, formatDate, downloadFile } from "./core/util.js";
+import { storage } from "./core/storage.js";
+import { EXAMPLE, emptyState, totalWeight, optionScore, ranking } from "./core/matrix.js";
+import { CATEGORIES, categorize } from "./core/categorize.js";
+import { requestSuggestion, localHeuristic, pickCategory } from "./core/suggest.js";
+import { decodeState, normalizeShared, buildShareUrl } from "./core/share.js";
+import { decisionCsv, historyCsv } from "./core/exporters.js";
+import {
+  HISTORY_LIMIT,
+  makeHistoryEntry,
+  filterHistory,
+  groupByCategory,
+} from "./core/history.js";
+
 /* ------------------------------------------------------------------ *
- *  Gewichtete Entscheidungsmatrix
- *  Reine Client-App: Zustand in localStorage, Animationen via GSAP.
+ *  Gewichtete Entscheidungsmatrix — UI-Schicht.
+ *  Die gesamte Logik liegt in ./core/*, hier nur DOM, Events, Animation.
  * ------------------------------------------------------------------ */
 
-const KEY = "decisionmatrix_state_v1";
-const THEME_KEY = "decisionmatrix_theme";
-const HISTORY_KEY = "decisionmatrix_history_v1";
-
-const CATEGORIES = [
-  "Kleidung",
-  "Reise",
-  "Technik",
-  "Finanzen",
-  "Karriere",
-  "Wohnen",
-  "Gesundheit",
-  "Essen",
-  "Freizeit",
-  "Sonstiges",
-];
-
-// Lokaler Keyword-Klassifikator (Fallback, wenn keine KI-Kategorie vorliegt).
-const CATEGORY_KEYWORDS = [
-  ["Kleidung", ["outfit", "kleid", "anzieh", "anzug", "hose", "schuh", "jacke", "hemd", "mode", "tragen", "pullover", "krawatte"]],
-  ["Reise", ["ferien", "urlaub", "reise", "flug", "hotel", "trip", "ausland", "wochenendtrip", "städtereise", "reisen", "fliegen"]],
-  ["Technik", ["laptop", "macbook", "thinkpad", "handy", "smartphone", "iphone", "pc", "computer", "kamera", "kopfhörer", "tablet", "software", "gerät", "monitor", "konsole"]],
-  ["Finanzen", ["sparen", "investier", "aktie", "kredit", "geld", "versicherung", "konto", "budget", "hypothek", "anlage", "etf", "kryptowährung", "bitcoin"]],
-  ["Karriere", ["job", "stelle", "arbeit", "bewerbung", "studium", "ausbildung", "kündig", "beruf", "karriere", "gehalt", "praktikum", "arbeitgeber"]],
-  ["Wohnen", ["wohnung", "umzug", "umziehen", "miete", "haus", "wohnort", "wg", "möbel", "renovier"]],
-  ["Gesundheit", ["arzt", "sport", "ernährung", "diät", "fitness", "gesundheit", "therapie", "training", "abnehmen", "workout"]],
-  ["Essen", ["restaurant", "kochen", "rezept", "mittagessen", "abendessen", "pizza", "essen gehen", "lokal", "menü"]],
-  ["Freizeit", ["film", "serie", "buch", "spiel", "konzert", "hobby", "ausgehen", "kino", "festival", "party"]],
-];
-
-function categorize(text) {
-  const t = (text || "").toLowerCase();
-  for (const [cat, words] of CATEGORY_KEYWORDS) {
-    if (words.some((w) => t.includes(w))) return cat;
-  }
-  return "Sonstiges";
-}
-
-const EXAMPLE = {
-  title: "Welches Outfit ziehe ich an?",
-  options: ["Outfit A — Business", "Outfit B — Smart Casual", "Outfit C — Casual"],
-  criteria: [
-    { name: "Anlass-Tauglichkeit", weight: 5, scores: [9, 7, 3] },
-    { name: "Komfort", weight: 4, scores: [4, 7, 9] },
-    { name: "Wetter-Tauglichkeit", weight: 3, scores: [6, 7, 8] },
-    { name: "Stil / Ausstrahlung", weight: 4, scores: [8, 8, 5] },
-    { name: "Preis / Aufwand", weight: 2, scores: [5, 7, 9] },
-  ],
-};
-
-const clone = (o) => JSON.parse(JSON.stringify(o));
-const clampNum = (v, lo, hi) => {
-  let n = Number(v);
-  if (Number.isNaN(n)) n = 0;
-  return Math.max(lo, Math.min(hi, n));
-};
-
-function loadState() {
-  try {
-    const s = localStorage.getItem(KEY);
-    return s ? JSON.parse(s) : null;
-  } catch {
-    return null;
-  }
-}
-function saveState() {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {
-    /* Speicher nicht verfügbar — App läuft trotzdem in-memory weiter. */
-  }
-}
-
-let state = loadState() || clone(EXAMPLE);
+let state = storage.loadJSON(STORAGE_KEYS.state) || clone(EXAMPLE);
 if (!state.title) state.title = EXAMPLE.title;
+
+function saveState() {
+  storage.saveJSON(STORAGE_KEYS.state, state);
+}
 
 /* ---------------------------- Shell ------------------------------- */
 
@@ -183,7 +129,6 @@ const historyList = document.getElementById("historyList");
 const histSearch = document.getElementById("histSearch");
 const histFilter = document.getElementById("histFilter");
 
-// Kategorie-Filter mit den bekannten Kategorien befüllen.
 CATEGORIES.forEach((c) => {
   const opt = document.createElement("option");
   opt.value = c;
@@ -201,12 +146,7 @@ function applyTheme(mode) {
   }
 }
 (function initTheme() {
-  let saved = null;
-  try {
-    saved = localStorage.getItem(THEME_KEY);
-  } catch {
-    /* ignore */
-  }
+  const saved = storage.loadString(STORAGE_KEYS.theme);
   if (saved) applyTheme(saved);
 })();
 document.getElementById("themeToggle").addEventListener("click", () => {
@@ -216,37 +156,14 @@ document.getElementById("themeToggle").addEventListener("click", () => {
       window.matchMedia("(prefers-color-scheme: dark)").matches);
   const next = isDark ? "light" : "dark";
   applyTheme(next);
-  try {
-    localStorage.setItem(THEME_KEY, next);
-  } catch {
-    /* ignore */
-  }
+  storage.saveString(STORAGE_KEYS.theme, next);
 });
-
-/* -------------------------- Berechnung ---------------------------- */
-
-const totalWeight = () =>
-  state.criteria.reduce((s, c) => s + (Number(c.weight) || 0), 0);
-
-function optionScore(oi) {
-  const tw = totalWeight();
-  if (tw <= 0) return 0;
-  let sum = 0;
-  state.criteria.forEach((c) => {
-    const w = Number(c.weight) || 0;
-    let v = Number(c.scores[oi]);
-    if (Number.isNaN(v)) v = 0;
-    sum += w * v;
-  });
-  return (sum / (tw * 10)) * 100; // 0..100, max je Kriterium = 10
-}
 
 /* ---------------------------- Render ------------------------------ */
 
 function render() {
   titleField.textContent = state.title;
 
-  // --- Kopfzeile
   headRow.innerHTML = "";
   const thCrit = document.createElement("th");
   thCrit.textContent = "Kriterium";
@@ -287,9 +204,8 @@ function render() {
     headRow.appendChild(th);
   });
 
-  // --- Zeilen
   body.innerHTML = "";
-  const tw = totalWeight();
+  const tw = totalWeight(state);
 
   state.criteria.forEach((c, ci) => {
     const tr = document.createElement("tr");
@@ -329,7 +245,7 @@ function render() {
     wInp.value = c.weight;
     wInp.setAttribute("aria-label", `Gewicht für ${c.name}`);
     wInp.addEventListener("input", () => {
-      c.weight = clampNum(wInp.value, 0, 10);
+      c.weight = clamp(wInp.value, 0, 10);
       saveState();
       render();
     });
@@ -352,7 +268,7 @@ function render() {
       s.value = c.scores[oi] == null ? "" : c.scores[oi];
       s.setAttribute("aria-label", `${c.name} – Punkte für ${state.options[oi]}`);
       s.addEventListener("input", () => {
-        c.scores[oi] = s.value === "" ? 0 : clampNum(s.value, 0, 10);
+        c.scores[oi] = s.value === "" ? 0 : clamp(s.value, 0, 10);
         saveState();
         renderResults();
       });
@@ -379,7 +295,7 @@ function render() {
 function renderResults(animate = true) {
   results.innerHTML = "";
 
-  if (state.options.length === 0 || state.criteria.length === 0 || totalWeight() <= 0) {
+  if (state.options.length === 0 || state.criteria.length === 0 || totalWeight(state) <= 0) {
     const e = document.createElement("div");
     e.className = "empty";
     e.style.padding = "0";
@@ -389,11 +305,7 @@ function renderResults(animate = true) {
     return;
   }
 
-  const rows = state.options.map((name, oi) => ({
-    name: name || `Option ${oi + 1}`,
-    score: optionScore(oi),
-  }));
-  const ranked = rows.slice().sort((a, b) => b.score - a.score);
+  const ranked = ranking(state);
   const best = ranked.length ? ranked[0].score : 0;
 
   ranked.forEach((r, i) => {
@@ -420,7 +332,6 @@ function renderResults(animate = true) {
     row.append(name, track, val);
     results.appendChild(row);
 
-    // --- GSAP: Balken- und Zahl-Animation
     const targetW = `${r.score}%`;
     if (animate) {
       gsap.to(fill, { width: targetW, duration: 0.8, ease: "power3.out", delay: i * 0.06 });
@@ -441,7 +352,6 @@ function renderResults(animate = true) {
     }
   });
 
-  // Gewinnerzeile kurz hervorheben
   if (animate) {
     const winner = results.querySelector(".res-row.win");
     if (winner) {
@@ -483,8 +393,6 @@ function removeCriterion(ci) {
   render();
 }
 
-/* --------------------------- Events ------------------------------- */
-
 document.getElementById("addOpt").addEventListener("click", addOption);
 document.getElementById("addCrit").addEventListener("click", addCriterion);
 document.getElementById("loadExample").addEventListener("click", () => {
@@ -494,7 +402,7 @@ document.getElementById("loadExample").addEventListener("click", () => {
   render();
 });
 document.getElementById("clearAll").addEventListener("click", () => {
-  state = { title: "Meine Entscheidung", options: [], criteria: [] };
+  state = emptyState();
   suggestedCategory = null;
   saveState();
   render();
@@ -515,71 +423,28 @@ titleField.addEventListener("keydown", (e) => {
 
 /* ---------------- Verlauf (History) ------------------------------ */
 
-let history = loadHistory();
-let suggestedCategory = null; // Kategorie aus letzter Generierung (KI oder Heuristik)
-let histQuery = ""; // Suchtext im Verlauf
-let histCatFilter = ""; // aktive Kategorie-Filterung ("" = alle)
+let history = storage.loadJSON(STORAGE_KEYS.history, []);
+if (!Array.isArray(history)) history = [];
+let suggestedCategory = null;
+let histQuery = "";
+let histCatFilter = "";
 
-function loadHistory() {
-  try {
-    const s = localStorage.getItem(HISTORY_KEY);
-    const arr = s ? JSON.parse(s) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
-}
 function persistHistory() {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-  } catch {
-    /* Speicher voll/gesperrt – Verlauf bleibt in-memory */
-  }
-}
-
-// Rangliste der aktuellen Matrix als [{name, score}] absteigend.
-function currentRanking() {
-  return state.options
-    .map((name, oi) => ({ name: name || `Option ${oi + 1}`, score: optionScore(oi) }))
-    .sort((a, b) => b.score - a.score);
-}
-
-function formatDate(iso) {
-  const d = new Date(iso);
-  if (isNaN(d)) return "";
-  return d.toLocaleDateString("de-CH", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  storage.saveJSON(STORAGE_KEYS.history, history);
 }
 
 function saveCurrentToHistory() {
-  if (state.options.length === 0 || state.criteria.length === 0 || totalWeight() <= 0) {
+  if (state.options.length === 0 || state.criteria.length === 0 || totalWeight(state) <= 0) {
     setStatus("Erst Optionen, Kriterien und Gewichte setzen, dann speichern.", "warn");
     return;
   }
-  const ranking = currentRanking();
-  const winner = ranking[0];
   const category =
     suggestedCategory && CATEGORIES.includes(suggestedCategory)
       ? suggestedCategory
       : categorize(`${state.title} ${state.options.join(" ")}`);
-  const entry = {
-    id: "h_" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
-    date: new Date().toISOString(),
-    title: state.title || "Meine Entscheidung",
-    category,
-    winner: winner ? winner.name : "",
-    winnerScore: winner ? winner.score : 0,
-    optionCount: state.options.length,
-    // Vollständiger Snapshot zum Wiederherstellen
-    snapshot: clone({ title: state.title, options: state.options, criteria: state.criteria }),
-  };
+  const entry = makeHistoryEntry(state, ranking(state), category);
   history.unshift(entry);
-  if (history.length > 50) history = history.slice(0, 50);
+  if (history.length > HISTORY_LIMIT) history = history.slice(0, HISTORY_LIMIT);
   persistHistory();
   renderHistory();
   setStatus("Im Verlauf gespeichert.", "ok");
@@ -664,15 +529,6 @@ function buildHistItem(h) {
   return item;
 }
 
-function historyMatches(h) {
-  if (histCatFilter && (h.category || "Sonstiges") !== histCatFilter) return false;
-  if (histQuery) {
-    const hay = `${h.title} ${h.winner} ${h.category}`.toLowerCase();
-    if (!hay.includes(histQuery)) return false;
-  }
-  return true;
-}
-
 function renderHistory() {
   historyList.innerHTML = "";
   if (history.length === 0) {
@@ -684,7 +540,7 @@ function renderHistory() {
     return;
   }
 
-  const filtered = history.filter(historyMatches);
+  const filtered = filterHistory(history, histQuery, histCatFilter);
   if (filtered.length === 0) {
     const e = document.createElement("div");
     e.className = "empty";
@@ -693,32 +549,13 @@ function renderHistory() {
     return;
   }
 
-  // Nach Kategorie gruppieren; Gruppen-Reihenfolge = zuletzt genutzte zuerst
-  // (history ist bereits neueste-zuerst sortiert).
-  const groups = new Map();
-  filtered.forEach((h) => {
-    const cat = CATEGORIES.includes(h.category) ? h.category : "Sonstiges";
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat).push(h);
-  });
-
-  for (const [cat, entries] of groups) {
+  for (const [cat, entries] of groupByCategory(filtered)) {
     const header = document.createElement("div");
     header.className = "hist-group";
     header.innerHTML = `<span class="hist-group-name">${escapeHtml(cat)}</span><span class="hist-group-count">${entries.length}</span>`;
     historyList.appendChild(header);
     entries.forEach((h) => historyList.appendChild(buildHistItem(h)));
   }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[c]));
 }
 
 document.getElementById("saveHist").addEventListener("click", saveCurrentToHistory);
@@ -734,78 +571,12 @@ histFilter.addEventListener("change", () => {
 
 /* ---------------- Export (CSV / PDF) ----------------------------- */
 
-function csvCell(v) {
-  const s = String(v ?? "");
-  return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-function csvRow(cells) {
-  return cells.map(csvCell).join(";");
-}
-
-function downloadFile(filename, content, mime) {
-  const blob = new Blob(["﻿" + content], { type: mime + ";charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function slugify(s) {
-  return (
-    (s || "entscheidung")
-      .toLowerCase()
-      .replace(/[äöü]/g, (m) => ({ ä: "ae", ö: "oe", ü: "ue" }[m]))
-      .replace(/ß/g, "ss")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 50) || "entscheidung"
-  );
-}
-
-// Aktuelle Matrix als CSV: Kriterien × Optionen + Rangliste.
-function currentDecisionCsv() {
-  const rows = [];
-  rows.push(csvRow(["Entscheidung", state.title || "Meine Entscheidung"]));
-  rows.push("");
-  rows.push(csvRow(["Kriterium", "Gewicht", ...state.options]));
-  state.criteria.forEach((c) => {
-    rows.push(csvRow([c.name, c.weight, ...state.options.map((_, oi) => c.scores[oi] ?? "")]));
-  });
-  rows.push("");
-  rows.push(csvRow(["Ergebnis (0–100)", ""]));
-  currentRanking().forEach((r, i) => {
-    rows.push(csvRow([`${i + 1}. ${r.name}`, r.score.toFixed(1)]));
-  });
-  return rows.join("\n");
-}
-
-function historyCsv() {
-  const rows = [csvRow(["Datum", "Kategorie", "Titel", "Gewinner", "Score", "Optionen"])];
-  history.forEach((h) => {
-    rows.push(
-      csvRow([
-        formatDate(h.date),
-        h.category || "Sonstiges",
-        h.title,
-        h.winner,
-        h.winnerScore.toFixed(1),
-        h.optionCount,
-      ])
-    );
-  });
-  return rows.join("\n");
-}
-
 document.getElementById("csvBtn").addEventListener("click", () => {
   if (state.options.length === 0 || state.criteria.length === 0) {
     setStatus("Nichts zu exportieren – erst Optionen und Kriterien anlegen.", "warn");
     return;
   }
-  downloadFile(`${slugify(state.title)}.csv`, currentDecisionCsv(), "text/csv");
+  downloadFile(`${slugify(state.title)}.csv`, decisionCsv(state), "text/csv");
 });
 
 document.getElementById("histCsv").addEventListener("click", () => {
@@ -813,11 +584,9 @@ document.getElementById("histCsv").addEventListener("click", () => {
     setStatus("Der Verlauf ist noch leer.", "warn");
     return;
   }
-  downloadFile("entscheidungs-verlauf.csv", historyCsv(), "text/csv");
+  downloadFile("entscheidungs-verlauf.csv", historyCsv(history), "text/csv");
 });
 
-// PDF über den Druckdialog (Browser: „Als PDF speichern“). Print-CSS blendet
-// alles ausser Titel, Matrix und Ergebnis aus.
 document.getElementById("pdfBtn").addEventListener("click", () => {
   if (state.options.length === 0 || state.criteria.length === 0) {
     setStatus("Nichts zu exportieren – erst Optionen und Kriterien anlegen.", "warn");
@@ -828,27 +597,12 @@ document.getElementById("pdfBtn").addEventListener("click", () => {
 
 /* ---------------- Teilen per Link -------------------------------- */
 
-function encodeState(s) {
-  const json = JSON.stringify({ title: s.title, options: s.options, criteria: s.criteria });
-  return btoa(unescape(encodeURIComponent(json)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-function decodeState(str) {
-  const b64 = str.replace(/-/g, "+").replace(/_/g, "/");
-  const json = decodeURIComponent(escape(atob(b64)));
-  const data = JSON.parse(json);
-  if (!Array.isArray(data.options) || !Array.isArray(data.criteria)) throw new Error("bad");
-  return data;
-}
-
 function shareLink() {
   if (state.options.length === 0 || state.criteria.length === 0) {
     setStatus("Nichts zu teilen – erst eine Entscheidung anlegen.", "warn");
     return;
   }
-  const url = `${location.origin}${location.pathname}#d=${encodeState(state)}`;
+  const url = buildShareUrl(state);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard
       .writeText(url)
@@ -866,19 +620,8 @@ function loadSharedFromHash() {
   const m = location.hash.match(/[#&]d=([^&]+)/);
   if (!m) return false;
   try {
-    const data = decodeState(m[1]);
-    state = {
-      title: String(data.title || "Geteilte Entscheidung"),
-      options: data.options.map((o) => String(o)),
-      criteria: data.criteria.map((c) => ({
-        name: String(c.name || ""),
-        weight: clampNum(c.weight, 0, 10),
-        scores: (Array.isArray(c.scores) ? c.scores : []).map((s) => clampNum(s, 0, 10)),
-      })),
-    };
+    state = normalizeShared(decodeState(m[1]));
     saveState();
-    // Hash entfernen, damit spätere Änderungen normal lokal gespeichert werden.
-    // (window.history, nicht die gleichnamige Verlaufs-Variable.)
     window.history.replaceState(null, "", location.pathname + location.search);
     setStatus("Geteilte Entscheidung geladen.", "ok");
     return true;
@@ -900,7 +643,7 @@ function applySuggestion(data) {
   const criteria = (data.criteria || [])
     .map((c) => ({
       name: String(c.name || "").trim(),
-      weight: clampNum(c.weight, 0, 10),
+      weight: clamp(c.weight, 0, 10),
       scores: options.map(() => 5),
     }))
     .filter((c) => c.name);
@@ -924,55 +667,6 @@ function applySuggestion(data) {
   return true;
 }
 
-/**
- * Lokaler Fallback ohne KI: erkennt Optionen im Satz ("A oder B", "A, B, C",
- * "A vs. B", "A / B") und schlägt generische, breit anwendbare Kriterien vor.
- */
-function localHeuristic(text) {
-  const raw = text.trim();
-  let core = raw
-    // Satz-Einleitung entfernen: "<Verb> ich …", "was ist besser", "welche …"
-    .replace(/^\s*(\p{L}+\s+ich|was\s+ist\s+besser|welche[srn]?)\b[:,]?/iu, "")
-    .replace(/[?.!]+\s*$/, "")
-    .trim();
-
-  let options = [];
-  const orMatch = core.split(/\s+(?:oder|vs\.?|versus)\s+|(?:\s*[,/]\s*)|\s+\/\s+/i);
-  if (orMatch.length >= 2) {
-    options = orMatch.map((s) => s.trim()).filter(Boolean);
-  }
-  // "zwischen X und Y"
-  const between = core.match(/zwischen\s+(.+?)\s+und\s+(.+)/i);
-  if (options.length < 2 && between) {
-    options = [between[1].trim(), between[2].trim()];
-  }
-  options = options
-    .map((o) =>
-      o
-        .replace(/^(nach|in|im|zu|zum|zur|auf|für|bei|mit)\s+/i, "") // Präposition vorne
-        .replace(/^(der|die|das|den|dem|ein(e|en|em|er|es)?)\s+/i, "") // Artikel vorne
-        .replace(/\s+(kaufen|nehmen|wählen|machen|buchen|mieten|holen|fahren|gehen)$/i, "") // Verb hinten
-        .trim()
-    )
-    .filter((o) => o.length > 0 && o.length < 60)
-    .slice(0, 5);
-  if (options.length < 2) options = ["Option A", "Option B", "Option C"];
-
-  const criteria = [
-    { name: "Nutzen", weight: 5 },
-    { name: "Kosten / Aufwand", weight: 4 },
-    { name: "Risiko", weight: 3 },
-    { name: "Zeit", weight: 3 },
-    { name: "Bauchgefühl", weight: 2 },
-  ];
-
-  return {
-    title: raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Meine Entscheidung",
-    options,
-    criteria,
-  };
-}
-
 async function generate(text) {
   const transcript = (text || "").trim();
   if (!transcript) {
@@ -984,19 +678,7 @@ async function generate(text) {
   micBtn.disabled = true;
   setStatus("Erzeuge Vorschläge …", "busy");
 
-  let data = null;
-  try {
-    const resp = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript }),
-    });
-    if (resp.ok) {
-      data = await resp.json();
-    }
-  } catch {
-    /* Netzwerk/kein Backend → Fallback unten */
-  }
+  let data = await requestSuggestion(transcript, config.backendUrl);
 
   let usedAi = true;
   if (!data || !Array.isArray(data.options) || data.options.length === 0) {
@@ -1004,17 +686,18 @@ async function generate(text) {
     data = localHeuristic(transcript);
   }
 
-  // Kategorie merken: KI-Wert bevorzugen, sonst lokal klassifizieren.
-  suggestedCategory =
-    data.category && CATEGORIES.includes(data.category)
-      ? data.category
-      : categorize(`${transcript} ${(data.options || []).join(" ")}`);
+  suggestedCategory = pickCategory(data, transcript);
 
   const ok = applySuggestion(data);
   genBtn.disabled = false;
   micBtn.disabled = false;
   if (ok) {
-    setStatus(usedAi ? "Von Claude erzeugt – jetzt Punkte 0–10 vergeben." : "Ohne KI erzeugt – Vorschläge sind einfach gehalten.", usedAi ? "ok" : "warn");
+    setStatus(
+      usedAi
+        ? "Von Claude erzeugt – jetzt Punkte 0–10 vergeben."
+        : "Ohne KI erzeugt – Vorschläge sind einfach gehalten.",
+      usedAi ? "ok" : "warn"
+    );
   }
 }
 
@@ -1077,7 +760,6 @@ if (SpeechRecognition) {
     }
   });
 } else {
-  // Browser ohne Spracherkennung: Mikrofon-Button ausblenden, Texteingabe bleibt.
   micBtn.style.display = "none";
   askInput.placeholder = "Tippe deine Entscheidung, z. B. „Laptop A oder B?“";
 }

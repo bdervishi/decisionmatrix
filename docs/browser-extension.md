@@ -180,3 +180,25 @@ Safari ist der aufwendigste Kanal (nativer App-Wrapper + Apple-Konto).
 
 > Dieses Dokument ist das Konzept/der Plan. Auf Wunsch setze ich mit Phase 1 (Refactoring)
 > und einem lauffähigen Chrome/Edge-MVP fort.
+
+---
+
+## 8. Umsetzungsstatus
+
+- **Phase 1 — Kern-Refactoring: erledigt.** Die framework-unabhängige Logik liegt jetzt in
+  `src/core/`:
+  - `config.js` — Backend-URL & Share-Basis-URL (von der Extension überschreibbar), Storage-Keys
+  - `storage.js` — Adapter (localStorage, Memory-Fallback; vorbereitet für `chrome.storage`)
+  - `matrix.js` — Zustandsmodell, Scoring, Rangliste, Beispiel
+  - `categorize.js` — Kategorien + Keyword-Klassifikator
+  - `suggest.js` — Backend-Aufruf (injizierbare URL) + lokale Heuristik + Kategorie-Wahl
+  - `share.js` — Zustand ⇄ Link, Share-URL-Bau
+  - `exporters.js` — CSV-Erzeugung
+  - `history.js` — Eintrag bauen, filtern, gruppieren
+  - `util.js` — clamp/clone/escapeHtml/slugify/formatDate/downloadFile
+
+  `main.js` ist nun reine UI-/Orchestrierungs-Schicht und importiert diese Module.
+  Verhaltensparität der Web-App per End-to-End-Test bestätigt.
+
+- **Nächster Schritt:** Phase 2 — WXT-Grundgerüst + Chrome/Edge-MVP (Side Panel), das
+  dieselben `src/core`-Module nutzt.
