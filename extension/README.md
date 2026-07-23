@@ -76,6 +76,19 @@ und damit denselben Speicher (Zustand + Verlauf gelten überall). Eine geräte-
 übergreifende Synchronisation via `chrome.storage.sync` ist als spätere Erweiterung
 vorgesehen (siehe `docs/browser-extension.md`).
 
+## Veröffentlichung
+
+Einreichungspakete bauen:
+
+```bash
+npm run pack:all          # extension/decisionmatrix-chrome.zip + -firefox.zip
+```
+
+- Store-Texte & Metadaten: `docs/store-listing.md`
+- Datenschutzerklärung: `docs/privacy.md`
+- Schritt-für-Schritt-Checkliste (Chrome/Edge/Firefox): `docs/publishing.md`
+- Screenshots (1280×800): `extension/store-assets/`
+
 ## Cross-Browser
 
-Firefox und Safari sind Folge-Phasen (siehe `docs/browser-extension.md`, Abschnitt 4/5).
+Safari ist bewusst ausgeklammert (siehe `docs/browser-extension.md`, Abschnitt 5).

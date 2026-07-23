@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "build:ext": "vite build --config extension/vite.config.js",
     "build:ext:firefox": "EXT_TARGET=firefox vite build --config extension/vite.config.js",
-    "dev:ext": "vite build --watch --config extension/vite.config.js"
+    "dev:ext": "vite build --watch --config extension/vite.config.js",
+    "pack:ext": "npm run build:ext && rm -f extension/decisionmatrix-chrome.zip && (cd extension/dist && zip -r -X -q ../decisionmatrix-chrome.zip .) && echo 'extension/decisionmatrix-chrome.zip'",
+    "pack:ext:firefox": "npm run build:ext:firefox && rm -f extension/decisionmatrix-firefox.zip && (cd extension/dist-firefox && zip -r -X -q ../decisionmatrix-firefox.zip .) && echo 'extension/decisionmatrix-firefox.zip'",
+    "pack:all": "npm run pack:ext && npm run pack:ext:firefox"
   },
   "devDependencies": {
     "vite": "^5.4.21"
