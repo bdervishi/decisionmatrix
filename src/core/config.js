@@ -11,6 +11,9 @@ export const config = {
   backendUrl: "/api/generate",
   // Basis-URL für Teilen-Links. null => aktuelle Seite (location.origin + pathname).
   shareBaseUrl: null,
+  // Optionaler Vorschlags-Anbieter: async (transcript) => data | null.
+  // Wird gegenüber backendUrl bevorzugt (z. B. BYO-Key-Pfad der Extension).
+  suggestProvider: null,
 };
 
 /** localStorage-/chrome.storage-Schlüssel. */

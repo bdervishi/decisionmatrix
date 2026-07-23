@@ -1,12 +1,12 @@
 import gsap from "gsap";
 import "./style.css";
 
-import { config, STORAGE_KEYS } from "./core/config.js";
+import { STORAGE_KEYS } from "./core/config.js";
 import { clone, clamp, escapeHtml, slugify, formatDate, downloadFile } from "./core/util.js";
 import { storage } from "./core/storage.js";
 import { EXAMPLE, emptyState, totalWeight, optionScore, ranking } from "./core/matrix.js";
 import { CATEGORIES, categorize } from "./core/categorize.js";
-import { requestSuggestion, localHeuristic, pickCategory } from "./core/suggest.js";
+import { getSuggestion, localHeuristic, pickCategory } from "./core/suggest.js";
 import { decodeState, normalizeShared, buildShareUrl } from "./core/share.js";
 import { decisionCsv, historyCsv } from "./core/exporters.js";
 import {
@@ -678,7 +678,7 @@ async function generate(text) {
   micBtn.disabled = true;
   setStatus("Erzeuge Vorschläge …", "busy");
 
-  let data = await requestSuggestion(transcript, config.backendUrl);
+  let data = await getSuggestion(transcript);
 
   let usedAi = true;
   if (!data || !Array.isArray(data.options) || data.options.length === 0) {

@@ -8,6 +8,22 @@ import { CATEGORIES, categorize } from "./categorize.js";
  * Die `backendUrl` ist injizierbar, damit die Extension einen absoluten
  * Endpoint setzen kann.
  */
+/**
+ * Vorschläge holen: bevorzugt einen konfigurierten Anbieter (z. B. BYO-Key),
+ * sonst das gehostete Backend. Gibt data oder null zurück.
+ */
+export async function getSuggestion(transcript) {
+  if (typeof config.suggestProvider === "function") {
+    try {
+      const d = await config.suggestProvider(transcript);
+      if (d) return d;
+    } catch {
+      /* Anbieter-Fehler → Backend/Heuristik */
+    }
+  }
+  return requestSuggestion(transcript, config.backendUrl);
+}
+
 export async function requestSuggestion(transcript, backendUrl = config.backendUrl) {
   if (!backendUrl) return null; // kein Backend konfiguriert → direkt Fallback
   try {

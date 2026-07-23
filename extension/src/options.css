@@ -29,6 +29,12 @@ h1 { font-size: 20px; margin: 0; font-weight: 650; }
 }
 .opt-field input:focus-visible { outline: 2px solid var(--o-accent); outline-offset: 1px; }
 .opt-hint { font-size: 12px; color: var(--o-muted); line-height: 1.45; }
+.opt-sep { height: 1px; background: var(--o-hair); margin: 4px 0; }
+.opt-tag {
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700;
+  color: var(--o-accent); background: color-mix(in srgb, var(--o-accent) 14%, transparent);
+  border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: middle;
+}
 .opt-actions { display: flex; align-items: center; gap: 12px; }
 .opt-save {
   font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; color: #fff;

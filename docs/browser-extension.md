@@ -215,5 +215,18 @@ Safari ist der aufwendigste Kanal (nativer App-Wrapper + Apple-Konto).
   - Bauen & Laden: `npm run build:ext` → `extension/dist` als „Entpackte Erweiterung laden“
     (siehe `extension/README.md`).
 
-- **Nächster Schritt:** Phase 3 (BYO-Key-Pfad direkt gegen Anthropic als Alternative zum
-  gehosteten Backend) und Phase 4 (Firefox via WXT, `gecko.id`, Sprach-Fallback).
+- **Phase 3 — BYO-Key-Pfad: erledigt.** Alternative zum gehosteten Backend: die Extension
+  kann Claude direkt aufrufen.
+  - Gemeinsames Prompt-/Schema-Modul `src/core/prompt.js` (DRY) — von der serverlosen
+    Funktion **und** dem Client geteilt.
+  - `src/core/anthropicClient.js` — direkter Aufruf über das offizielle SDK im Browser-Modus
+    (`dangerouslyAllowBrowser: true`; das SDK setzt den CORS-Header
+    `anthropic-dangerous-direct-browser-access`).
+  - Pluggbarer Vorschlags-Anbieter (`config.suggestProvider`) + `getSuggestion()`:
+    Reihenfolge **Backend-URL → eigener Key → lokale Heuristik**.
+  - Options-Seite um ein API-Key-Feld (Passwort) mit Sicherheitshinweis erweitert.
+  - Web-App unberührt (importiert das SDK nicht); Extension bündelt es nur für diesen Pfad.
+    Builds grün, Extension neu geladen und getestet — Wiring (Node-Test) + Rendering ok.
+
+- **Nächster Schritt:** Phase 4 (Firefox via WXT, `gecko.id`, Sprach-Fallback) und Phase 5
+  (Safari via Xcode-Wrapper). Optional `chrome.storage.sync` für geräteübergreifenden Verlauf.

@@ -42,6 +42,13 @@ Für Claude-Vorschläge in den **Einstellungen** hinterlegen:
 - **Share-Basis-URL** — öffentliche Web-App für Teilen-Links, z. B.
   `https://<deployment>/`. Ohne Angabe zeigen Links auf die interne
   Extension-Seite und lassen sich nicht extern öffnen.
+- **Eigener Anthropic API-Key (Alternative)** — nur nötig, wenn du **kein**
+  Backend nutzt. Dann ruft die Extension Claude direkt auf (offizielles SDK im
+  Browser-Modus). Der Key bleibt lokal, wird aber direkt an Anthropic gesendet —
+  bequemer, aber weniger sicher als das Backend (dort verlässt der Key nie den
+  Server). Ist eine Backend-URL gesetzt, wird sie bevorzugt und der Key ignoriert.
+
+Reihenfolge der Vorschlagsquelle: **Backend-URL → eigener Key → lokale Heuristik.**
 
 ## Speicherung
 

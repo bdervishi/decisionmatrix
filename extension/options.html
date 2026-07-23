@@ -26,6 +26,17 @@
           auf die interne Extension-Seite und lassen sich nicht extern öffnen.</span>
       </label>
 
+      <div class="opt-sep"></div>
+
+      <label class="opt-field">
+        <span class="opt-label">Eigener Anthropic API-Key <span class="opt-tag">Alternative</span></span>
+        <input type="password" id="apiKey" autocomplete="off" placeholder="sk-ant-…" />
+        <span class="opt-hint">Nur nötig, wenn du <strong>kein</strong> Backend nutzt. Dann ruft die
+          Extension Claude direkt auf. Der Key bleibt lokal im Browser, wird aber direkt an
+          Anthropic gesendet — bequemer, aber weniger sicher als das serverseitige Backend.
+          Ist eine Backend-URL gesetzt, wird diese bevorzugt und der Key ignoriert.</span>
+      </label>
+
       <div class="opt-actions">
         <button class="opt-save" id="save">Speichern</button>
         <span class="opt-status" id="status" role="status" aria-live="polite"></span>
