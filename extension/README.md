@@ -16,9 +16,14 @@ Vom Projekt-Root:
 
 ```bash
 npm install
-npm run build:ext     # baut nach extension/dist/
-# npm run dev:ext      # Watch-Build während der Entwicklung
+npm run build:ext           # Chrome/Edge → extension/dist/
+npm run build:ext:firefox   # Firefox    → extension/dist-firefox/
+# npm run dev:ext            # Watch-Build (Chrome) während der Entwicklung
 ```
+
+Das Manifest wird pro Ziel erzeugt (`extension/manifest.js`):
+Chrome/Edge nutzen `side_panel` + `background.service_worker`, Firefox
+`sidebar_action` + `background.scripts` + `browser_specific_settings.gecko`.
 
 ## Laden (Chrome / Edge)
 
@@ -27,8 +32,21 @@ npm run build:ext     # baut nach extension/dist/
 3. **Entpackte Erweiterung laden** → Ordner **`extension/dist`** wählen
 4. Symbol anklicken → **Im Seitenpanel öffnen**
 
-Nach Code-Änderungen `npm run build:ext` erneut ausführen und die Erweiterung
-in der Liste **neu laden**.
+## Laden (Firefox)
+
+1. `about:debugging#/runtime/this-firefox` öffnen
+2. **Temporäres Add-on laden…** → Datei **`extension/dist-firefox/manifest.json`** wählen
+3. Symbol anklicken → **Im Seitenpanel öffnen** (öffnet die Firefox-Sidebar)
+
+Alternativ mit [`web-ext`](https://extensionworkshop.com/documentation/develop/web-ext-command-reference/):
+`npx web-ext run --source-dir extension/dist-firefox`
+
+> Firefox unterstützt keine Web-Speech-Spracherkennung — der Mikrofon-Button wird dort
+> ausgeblendet, die Texteingabe bleibt. `web-ext lint` meldet 0 Fehler (nur `innerHTML`-
+> Warnungen für ausschliesslich escaped/statischen Inhalt).
+
+Nach Code-Änderungen den jeweiligen Build erneut ausführen und die Erweiterung
+in der Browser-Liste **neu laden** (in Firefox: temporäres Add-on erneut laden).
 
 ## KI-Vorschläge konfigurieren
 

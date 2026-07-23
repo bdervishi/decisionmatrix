@@ -228,5 +228,21 @@ Safari ist der aufwendigste Kanal (nativer App-Wrapper + Apple-Konto).
   - Web-App unberührt (importiert das SDK nicht); Extension bündelt es nur für diesen Pfad.
     Builds grün, Extension neu geladen und getestet — Wiring (Node-Test) + Rendering ok.
 
-- **Nächster Schritt:** Phase 4 (Firefox via WXT, `gecko.id`, Sprach-Fallback) und Phase 5
-  (Safari via Xcode-Wrapper). Optional `chrome.storage.sync` für geräteübergreifenden Verlauf.
+- **Phase 4 — Firefox: erledigt.** Der Build ist jetzt **ziel-abhängig** (statt WXT eine
+  schlanke, kontrollierbare Lösung im bestehenden Vite-Setup):
+  - `extension/manifest.js` erzeugt pro Ziel das passende Manifest:
+    Chrome/Edge → `side_panel` + `background.service_worker` (type module);
+    Firefox → `sidebar_action` + `background.scripts` + `browser_specific_settings.gecko`
+    (`id`, `strict_min_version: 115.0`).
+  - Cross-browser APIs: `const api = globalThis.browser || globalThis.chrome`; Side-Panel-
+    Öffnung wählt automatisch `sidePanel.open` (Chromium) bzw. `sidebarAction.open` (Firefox).
+  - `background.js` ist ESM-frei → als Firefox-`scripts`-Eintrag ladbar.
+  - Builds: `npm run build:ext` (→ `extension/dist`), `npm run build:ext:firefox`
+    (→ `extension/dist-firefox`).
+  - Validierung: Chrome erneut als entpackte Erweiterung geladen (rendert fehlerfrei);
+    Firefox-Build via `web-ext lint` geprüft — **0 Fehler** (nur `innerHTML`-Warnungen für
+    escaped/statischen Inhalt). Firefox hat keine Web-Speech-Erkennung → Mikrofon-Button
+    blendet sich dort aus (Texteingabe bleibt).
+
+- **Nächster Schritt:** Phase 5 (Safari via Xcode-Wrapper + Apple-Developer-Konto) und
+  Store-Veröffentlichung. Optional `chrome.storage.sync` für geräteübergreifenden Verlauf.

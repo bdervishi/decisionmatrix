@@ -4,21 +4,31 @@ import { storage } from "../../src/core/storage.js";
 import { STORAGE_KEYS } from "../../src/core/config.js";
 import { formatDate } from "../../src/core/util.js";
 
+const api = globalThis.browser || globalThis.chrome;
+
 async function openSidePanel() {
   try {
-    const win = await chrome.windows.getCurrent();
-    await chrome.sidePanel.open({ windowId: win.id });
+    if (api.sidePanel && api.sidePanel.open) {
+      // Chrome / Edge
+      const win = await api.windows.getCurrent();
+      await api.sidePanel.open({ windowId: win.id });
+    } else if (api.sidebarAction && api.sidebarAction.open) {
+      // Firefox
+      await api.sidebarAction.open();
+    } else {
+      throw new Error("keine Side-Panel-API");
+    }
     window.close();
   } catch {
-    // Fallback: Vollseite im Tab öffnen, falls Side Panel nicht verfügbar.
-    chrome.tabs.create({ url: chrome.runtime.getURL("sidepanel.html") });
+    // Fallback: Vollseite im Tab öffnen.
+    api.tabs.create({ url: api.runtime.getURL("sidepanel.html") });
     window.close();
   }
 }
 
 document.getElementById("openPanel").addEventListener("click", openSidePanel);
 document.getElementById("openOptions").addEventListener("click", () => {
-  chrome.runtime.openOptionsPage();
+  api.runtime.openOptionsPage();
   window.close();
 });
 

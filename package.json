@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "build:ext": "vite build --config extension/vite.config.js",
+    "build:ext:firefox": "EXT_TARGET=firefox vite build --config extension/vite.config.js",
     "dev:ext": "vite build --watch --config extension/vite.config.js"
   },
   "devDependencies": {

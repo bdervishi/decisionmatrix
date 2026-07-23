@@ -1,23 +1,28 @@
-/** Service-Worker: Kontextmenü + Side-Panel-Öffnung. */
+/** Service-Worker / Background: Kontextmenü + Side-Panel-Öffnung (cross-browser). */
 
+const api = globalThis.browser || globalThis.chrome;
 const MENU_ID = "dm-decide";
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
+api.runtime.onInstalled.addListener(() => {
+  api.contextMenus.create({
     id: MENU_ID,
     title: 'Als Entscheidung öffnen: „%s“',
     contexts: ["selection"],
   });
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+api.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== MENU_ID) return;
   try {
-    // Session-Storage auch für nicht-vertrauenswürdige Kontexte lesbar machen ist
-    // nicht nötig – wir schreiben aus dem Worker und lesen im Side-Panel (beide vertrauenswürdig).
-    await chrome.storage.session.set({ pendingTranscript: info.selectionText || "" });
-    if (tab && tab.windowId != null) {
-      await chrome.sidePanel.open({ windowId: tab.windowId });
+    await api.storage.session.set({ pendingTranscript: info.selectionText || "" });
+  } catch {
+    /* storage.session evtl. nicht verfügbar */
+  }
+  try {
+    if (api.sidePanel && api.sidePanel.open && tab && tab.windowId != null) {
+      await api.sidePanel.open({ windowId: tab.windowId }); // Chrome / Edge
+    } else if (api.sidebarAction && api.sidebarAction.open) {
+      await api.sidebarAction.open(); // Firefox
     }
   } catch {
     /* Öffnen fehlgeschlagen – ignorieren */

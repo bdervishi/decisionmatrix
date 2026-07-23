@@ -15,9 +15,10 @@ await import("../../src/main.js");
 
 // Über das Kontextmenü übergebenen Text ins Eingabefeld übernehmen.
 try {
-  const { pendingTranscript } = await chrome.storage.session.get("pendingTranscript");
+  const api = globalThis.browser || globalThis.chrome;
+  const { pendingTranscript } = await api.storage.session.get("pendingTranscript");
   if (pendingTranscript) {
-    await chrome.storage.session.remove("pendingTranscript");
+    await api.storage.session.remove("pendingTranscript");
     const inp = document.getElementById("askInput");
     if (inp) {
       inp.value = pendingTranscript;
