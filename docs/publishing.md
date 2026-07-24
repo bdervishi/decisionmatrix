@@ -31,10 +31,58 @@ npm run pack:all
 
 Die Zips enthalten den Inhalt von `dist` bzw. `dist-firefox` (Manifest auf oberster Ebene).
 
-> **Voll-Automatik bis in die Stores** ist zusätzlich möglich (Chrome Web Store API,
-> Firefox AMO via `web-ext sign`, Edge Publish API) — dafür müssen die jeweiligen
-> Store-Zugangsdaten als **GitHub-Secrets** hinterlegt und die Add-ons einmalig
-> registriert sein. Das ist als Folgeschritt vorgesehen.
+> **Voll-Automatik bis in die Stores** ist zusätzlich möglich — siehe unten.
+
+## Automatisches Publizieren (CI)
+
+Der Workflow `.github/workflows/publish-extension.yml` lädt bei einem **Version-Tag**
+automatisch in die Stores hoch. Jeder Store-Schritt läuft nur, wenn seine Secrets gesetzt
+sind (fehlt ein Store, wird er übersprungen).
+
+**Auslösen:**
+
+```bash
+# Version in extension/manifest.js erhöhen, committen, dann:
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+### Einmalige Voraussetzungen (pro Store)
+
+- **Chrome:** Das Item **einmal manuell** im [Developer Dashboard](https://chrome.google.com/webstore/devconsole)
+  anlegen (Zip hochladen, Listing/Screenshots/Datenschutz-URL ausfüllen). Danach kennst du
+  die **Item-ID** — ab dann übernimmt die CI die Updates.
+- **Firefox:** Entwickler-Vereinbarung auf [AMO](https://addons.mozilla.org/developers/)
+  akzeptieren und das Listing (Screenshots, Beschreibung, Datenschutz) anlegen. AMO verlangt
+  bei gebündeltem Code ggf. den **Quellcode** — Repo-Link oder Source-Zip bereithalten.
+
+### Benötigte GitHub-Secrets
+
+`Settings → Secrets and variables → Actions → New repository secret`
+
+| Secret | Store | Woher |
+|---|---|---|
+| `CHROME_EXTENSION_ID` | Chrome | Item-ID aus dem Developer Dashboard |
+| `CHROME_CLIENT_ID` | Chrome | Google Cloud → Projekt → **Chrome Web Store API** aktivieren → OAuth-Client (Typ „Desktop“) |
+| `CHROME_CLIENT_SECRET` | Chrome | derselbe OAuth-Client |
+| `CHROME_REFRESH_TOKEN` | Chrome | einmalig via OAuth-Flow erzeugen (z. B. `npx chrome-webstore-upload-keys`) |
+| `AMO_JWT_ISSUER` | Firefox | AMO → **Manage API Keys** → JWT issuer |
+| `AMO_JWT_SECRET` | Firefox | AMO → **Manage API Keys** → JWT secret |
+
+> **Chrome-Refresh-Token** (Kurzfassung): OAuth-Client anlegen, mit `client_id`/`client_secret`
+> den Consent-Flow für den Scope `https://www.googleapis.com/auth/chromewebstore` durchlaufen
+> und den erhaltenen `code` gegen ein `refresh_token` tauschen. Das Helfer-Tool
+> `npx chrome-webstore-upload-keys` führt durch diesen Ablauf.
+
+### Ablauf
+
+1. Secrets hinterlegen (nur die Stores, die du willst).
+2. Erstes Release je Store **einmal manuell** (Listing anlegen).
+3. Ab dann: `git tag vX.Y.Z && git push --tags` → CI baut & lädt hoch; die
+   Store-**Review** läuft danach wie gewohnt (nicht überspringbar).
+
+**Edge** lässt sich analog ergänzen (nutzt das Chrome-Zip, eigene Publish-API/Action) —
+auf Wunsch baue ich den Schritt dazu.
 
 ## 2. Chrome Web Store
 

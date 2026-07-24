@@ -1,0 +1,71 @@
+name: Publish Extension
+
+# Veröffentlicht die Extension bei einem Version-Tag (z. B. v1.0.1) automatisch in
+# den Stores. Jeder Store-Schritt läuft nur, wenn seine Secrets gesetzt sind.
+#
+# Auslösen:  git tag v1.0.1 && git push origin v1.0.1
+#
+# Benötigte GitHub-Secrets (Settings → Secrets and variables → Actions):
+#   Chrome Web Store:
+#     CHROME_EXTENSION_ID     – Item-ID aus dem Developer Dashboard
+#     CHROME_CLIENT_ID        – OAuth-Client-ID (Google Cloud, Chrome Web Store API)
+#     CHROME_CLIENT_SECRET    – OAuth-Client-Secret
+#     CHROME_REFRESH_TOKEN    – OAuth-Refresh-Token
+#   Firefox AMO:
+#     AMO_JWT_ISSUER          – API-Key (JWT issuer) von addons.mozilla.org
+#     AMO_JWT_SECRET          – API-Secret
+#
+# Voraussetzung (einmalig, siehe docs/publishing.md): Add-on je Store einmal manuell
+# anlegen (Listing/Screenshots/Datenschutz), danach übernimmt dieser Workflow Updates.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+      CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+      CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+      CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Pakete bauen (Chrome + Firefox)
+        run: npm run pack:all
+
+      - name: Chrome Web Store veröffentlichen
+        if: ${{ env.CHROME_CLIENT_ID != '' }}
+        uses: mnao305/chrome-extension-upload@v5
+        with:
+          file-path: extension/decisionmatrix-chrome.zip
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          publish: true
+
+      - name: Firefox AMO veröffentlichen (listed)
+        if: ${{ env.AMO_JWT_ISSUER != '' }}
+        run: |
+          npx --yes web-ext sign \
+            --source-dir extension/dist-firefox \
+            --channel listed \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET"
