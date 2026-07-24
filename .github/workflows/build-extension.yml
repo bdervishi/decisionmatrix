@@ -1,0 +1,56 @@
+name: Build Extension
+
+# Baut bei jedem Push die einreichfertigen Extension-Pakete (Chrome/Edge + Firefox)
+# und stellt sie als Artefakte bereit. Bei einem Versions-Tag (v*) werden sie
+# zusätzlich an ein GitHub-Release gehängt.
+#
+# Analog zu Vercel (das die Web-App + das Backend automatisch deployt) liefert
+# diese Pipeline nach jedem Push die aktuellen Extension-Zips — bereit zum Hochladen
+# in Chrome Web Store / Edge Add-ons / Firefox AMO.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # für Release-Uploads bei Tags
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Extension-Pakete bauen (Chrome + Firefox)
+        run: npm run pack:all
+
+      - name: Firefox-Build prüfen (web-ext lint)
+        continue-on-error: true # nur informativ: innerHTML-Warnungen sollen den Build nicht stoppen
+        run: npx --yes web-ext lint --source-dir extension/dist-firefox --no-config-discovery --self-hosted
+
+      - name: Pakete als Artefakte hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zips
+          path: |
+            extension/decisionmatrix-chrome.zip
+            extension/decisionmatrix-firefox.zip
+          if-no-files-found: error
+
+      - name: An Release anhängen (nur bei Version-Tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            extension/decisionmatrix-chrome.zip
+            extension/decisionmatrix-firefox.zip

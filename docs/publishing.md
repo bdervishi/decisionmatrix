@@ -16,6 +16,13 @@ Safari ist bewusst ausgeklammert (siehe `browser-extension.md`).
 
 ## 1. Pakete bauen
 
+**Automatisch (CI):** Der Workflow `.github/workflows/build-extension.yml` baut die Pakete
+bei **jedem Push** und stellt sie unter dem Actions-Run als **Artefakt „extension-zips“**
+zum Download bereit. Bei einem **Version-Tag** (`git tag v1.0.1 && git push --tags`) werden
+sie zusätzlich an ein **GitHub-Release** gehängt.
+
+**Manuell (lokal):**
+
 ```bash
 npm run pack:all
 # → extension/decisionmatrix-chrome.zip
@@ -23,6 +30,11 @@ npm run pack:all
 ```
 
 Die Zips enthalten den Inhalt von `dist` bzw. `dist-firefox` (Manifest auf oberster Ebene).
+
+> **Voll-Automatik bis in die Stores** ist zusätzlich möglich (Chrome Web Store API,
+> Firefox AMO via `web-ext sign`, Edge Publish API) — dafür müssen die jeweiligen
+> Store-Zugangsdaten als **GitHub-Secrets** hinterlegt und die Add-ons einmalig
+> registriert sein. Das ist als Folgeschritt vorgesehen.
 
 ## 2. Chrome Web Store
 
