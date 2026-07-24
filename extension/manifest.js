@@ -18,7 +18,7 @@ export function buildManifest(target) {
     name: "Entscheidungsmatrix",
     version: "1.0.0",
     description:
-      "Gewichtete Entscheidungsmatrix — Optionen anhand gewichteter Kriterien vergleichen, mit Sprach-/KI-Vorschlägen, Verlauf, Kategorien, Export und Teilen.",
+      "Optionen nach gewichteten Kriterien vergleichen — mit Sprach-/KI-Vorschlägen, Verlauf, Kategorien, Export und Teilen.",
     action: {
       default_popup: "popup.html",
       default_title: "Entscheidungsmatrix",
